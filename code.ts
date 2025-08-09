@@ -8,8 +8,7 @@ const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 
 async function setText(text: TextNode, s: string) {
     // Load Inter font (our standard font for this plugin)
-    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
-    try { 
+    try {
         text.characters = s;
         text.locked = true;
     } catch (e) { 
@@ -258,39 +257,26 @@ async function isScaleInstance(inst: InstanceNode): Promise<boolean> {
 
 // Check if instance needs text/stroke update
 async function needsUpdate(inst: InstanceNode): Promise<boolean> {
-    if (!(await isScaleInstance(inst))) {
-        return false;
-    }
+    if (!(await isScaleInstance(inst))) return false;
     
     const t = findValueText(inst);
-    if (!t) {
-        return false;
-    }
+    if (!t) return false;
     
-    // Check if text needs update
     const expectedText = px(inst.height);
-    const textNeedsUpdate = t.characters !== expectedText;
-    
-    // Check if stroke weight needs update
+    const expectedStroke = inst.height <= 10 ? 0.5 : 1;
     const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow") as LineNode | null;
-    const expectedStrokeWeight = inst.height <= 10 ? 0.5 : 1;
-    const strokeNeedsUpdate = line ? line.strokeWeight !== expectedStrokeWeight : false;
     
-    return textNeedsUpdate || strokeNeedsUpdate;
+    return t.characters !== expectedText || (line ? line.strokeWeight !== expectedStroke : false);
 }
 
 // Sync a single instance's text to its own height
 async function syncOne(inst: InstanceNode) {
-    if (!(await isScaleInstance(inst))) {
-        return;
-    }
+    if (!(await isScaleInstance(inst))) return;
     
     const t = findValueText(inst);
-    if (!t) {
-        return;
-    }
-    const newText = px(inst.height);
-    await setText(t, newText);
+    if (!t) return;
+    
+    await setText(t, px(inst.height));
     
     // Update stroke weight based on height
     const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow") as LineNode | null;
@@ -395,26 +381,20 @@ let selectionChangeHandler: (() => void) | null = null;
 let isStartupSync = false;
 
 function onDocChange() {
-    // Clear existing debounce timer
-    if (debounceTimer) {
-        clearTimeout(debounceTimer);
-    }
-    
-    // Don't start new timer if already processing
+    if (debounceTimer) clearTimeout(debounceTimer);
     if (ticking) return;
     
-    // Set debounce timer - longer delay to reduce updates during continuous resizing
     debounceTimer = setTimeout(async () => {
         if (ticking) return;
         ticking = true;
         debounceTimer = null;
         
         try {
-            await syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
+            await syncAll("selection");
         } finally {
             ticking = false;
         }
-    }, 250); // Increased from 120ms to 250ms for better performance during resizing
+    }, 250);
 }
 
 function onSelChange() {

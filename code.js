@@ -16,7 +16,6 @@ const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 function setText(text, s) {
     return __awaiter(this, void 0, void 0, function* () {
         // Load Inter font (our standard font for this plugin)
-        yield figma.loadFontAsync(CONSTANTS.FONT).catch(() => { });
         try {
             text.characters = s;
             text.locked = true;
@@ -248,35 +247,26 @@ function isScaleInstance(inst) {
 // Check if instance needs text/stroke update
 function needsUpdate(inst) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!(yield isScaleInstance(inst))) {
+        if (!(yield isScaleInstance(inst)))
             return false;
-        }
         const t = findValueText(inst);
-        if (!t) {
+        if (!t)
             return false;
-        }
-        // Check if text needs update
         const expectedText = px(inst.height);
-        const textNeedsUpdate = t.characters !== expectedText;
-        // Check if stroke weight needs update
+        const expectedStroke = inst.height <= 10 ? 0.5 : 1;
         const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow");
-        const expectedStrokeWeight = inst.height <= 10 ? 0.5 : 1;
-        const strokeNeedsUpdate = line ? line.strokeWeight !== expectedStrokeWeight : false;
-        return textNeedsUpdate || strokeNeedsUpdate;
+        return t.characters !== expectedText || (line ? line.strokeWeight !== expectedStroke : false);
     });
 }
 // Sync a single instance's text to its own height
 function syncOne(inst) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!(yield isScaleInstance(inst))) {
+        if (!(yield isScaleInstance(inst)))
             return;
-        }
         const t = findValueText(inst);
-        if (!t) {
+        if (!t)
             return;
-        }
-        const newText = px(inst.height);
-        yield setText(t, newText);
+        yield setText(t, px(inst.height));
         // Update stroke weight based on height
         const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow");
         if (line) {
@@ -369,26 +359,22 @@ let documentChangeHandler = null;
 let selectionChangeHandler = null;
 let isStartupSync = false;
 function onDocChange() {
-    // Clear existing debounce timer
-    if (debounceTimer) {
+    if (debounceTimer)
         clearTimeout(debounceTimer);
-    }
-    // Don't start new timer if already processing
     if (ticking)
         return;
-    // Set debounce timer - longer delay to reduce updates during continuous resizing
     debounceTimer = setTimeout(() => __awaiter(this, void 0, void 0, function* () {
         if (ticking)
             return;
         ticking = true;
         debounceTimer = null;
         try {
-            yield syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
+            yield syncAll("selection");
         }
         finally {
             ticking = false;
         }
-    }), 250); // Increased from 120ms to 250ms for better performance during resizing
+    }), 250);
 }
 function onSelChange() {
     syncAll("selection").catch(console.error);
