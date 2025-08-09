@@ -97,7 +97,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     vertical.primaryAxisSizingMode = "AUTO";
     vertical.counterAxisSizingMode = "FIXED";
     vertical.counterAxisAlignItems = "CENTER";
-    vertical.primaryAxisAlignItems = "CENTER";
+    vertical.primaryAxisAlignItems = "MIN";
     vertical.itemSpacing = 10;
     vertical.paddingLeft = vertical.paddingRight = vertical.paddingTop = vertical.paddingBottom = 10;
 
@@ -128,6 +128,27 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
 
     vertical.appendChild(verticalText);
 
+    // Create line for vertical component
+    const verticalLine = figma.createLine();
+    verticalLine.name = "Arrow";
+    verticalLine.resize(96, 0);
+    verticalLine.rotation = -90;
+    verticalLine.strokes = [{
+        type: "SOLID",
+        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+    }];
+    verticalLine.strokeWeight = 1;
+    verticalLine.strokeAlign = "CENTER";
+    verticalLine.strokeCap = "ARROW_LINES";
+
+    vertical.appendChild(verticalLine);
+    
+    // Set line constraints and positioning
+    verticalLine.layoutPositioning = "ABSOLUTE";
+    verticalLine.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    verticalLine.x = 0;
+    verticalLine.y = 0;
+
     // Create horizontal component
     const horizontal = figma.createComponent();
     horizontal.name = `Orientation=Horizontal`;
@@ -136,7 +157,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     horizontal.primaryAxisSizingMode = "AUTO";
     horizontal.counterAxisSizingMode = "FIXED";
     horizontal.counterAxisAlignItems = "CENTER";
-    horizontal.primaryAxisAlignItems = "CENTER";
+    horizontal.primaryAxisAlignItems = "MIN";
     horizontal.itemSpacing = 10;
     horizontal.paddingLeft = horizontal.paddingRight = horizontal.paddingTop = horizontal.paddingBottom = 10;
 
@@ -151,7 +172,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     horizontal.strokes = [];
 
     // Rotate the horizontal component 90 degrees
-    horizontal.rotation = 90; // 90 degrees in radians
+    horizontal.rotation = -90; // 90 degrees in radians
 
     const horizontalText = figma.createText();
     horizontalText.name = VALUE_NODE_NAME;
@@ -161,7 +182,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     horizontalText.fontSize = 12;
     horizontalText.characters = px(horizontal.height);
     horizontalText.locked = true;
-    horizontalText.rotation = -90;
+    horizontalText.rotation = 90;
     
     // Text color: dark pink
     horizontalText.fills = [{
@@ -171,6 +192,29 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
 
     horizontal.appendChild(horizontalText);
 
+
+    // Create line for vertical component
+    const horizontalLine = figma.createLine();
+    horizontalLine.name = "Arrow";
+    horizontalLine.resize(96, 0);
+    horizontalLine.rotation = -90;
+    horizontalLine.strokes = [{
+        type: "SOLID",
+        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+    }];
+    horizontalLine.strokeWeight = 1;
+    horizontalLine.strokeAlign = "CENTER";
+    horizontalLine.strokeCap = "ARROW_LINES";
+
+    horizontal.appendChild(horizontalLine);
+
+    // Set line constraints and positioning
+    horizontalLine.layoutPositioning = "ABSOLUTE";
+    horizontalLine.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    horizontalLine.x = 0;
+    horizontalLine.y = 0;
+
+
     // Create component set from the two components
     const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
     componentSet.name = SCALE_COMPONENT_NAME;
@@ -178,7 +222,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     componentSet.primaryAxisSizingMode = "AUTO";
     componentSet.counterAxisSizingMode = "FIXED";
     componentSet.counterAxisAlignItems = "CENTER";
-    componentSet.primaryAxisAlignItems = "CENTER";
+    componentSet.primaryAxisAlignItems = "MIN";
     componentSet.itemSpacing = 10;
     componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 10;
     
