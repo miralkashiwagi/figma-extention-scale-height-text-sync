@@ -11,7 +11,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 function isText(n) { return n.type === "TEXT"; }
 const SCALE_COMPONENT_ID_KEY = "scaleComponentId";
-const VALUE_NODE_NAME = "value - please detach if you want to edit";
+const VALUE_NODE_NAME = "value";
+const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 function ensureFontsFor(text) {
     return __awaiter(this, void 0, void 0, function* () {
         const fonts = [];
@@ -70,7 +71,7 @@ function getOrCreateScaleComponent() {
             }
         }
         // Fallback: Try find by name in document
-        const existing = figma.root.findOne(n => n.type === "COMPONENT" && n.name === "scale-ruler/height-sync");
+        const existing = figma.root.findOne(n => n.type === "COMPONENT" && n.name === SCALE_COMPONENT_NAME);
         if (existing) {
             // Store the ID for future reference
             storeScaleComponentId(existing.id);
@@ -78,7 +79,7 @@ function getOrCreateScaleComponent() {
         }
         // Create component
         const comp = figma.createComponent();
-        comp.name = "scale-ruler/height-sync";
+        comp.name = SCALE_COMPONENT_NAME;
         // Store the component ID
         storeScaleComponentId(comp.id);
         comp.resizeWithoutConstraints(49, 96);
@@ -131,7 +132,7 @@ function insertScaleInstance() {
     return __awaiter(this, void 0, void 0, function* () {
         const comp = yield getOrCreateScaleComponent();
         const inst = comp.createInstance();
-        inst.name = "scale-ruler/height-sync";
+        inst.name = SCALE_COMPONENT_NAME;
         // Rename the text node in the instance to match VALUE_NODE_NAME
         const textNode = inst.findOne(n => isText(n));
         if (textNode) {
@@ -251,21 +252,19 @@ function onSelChange() {
 // ---------- Commands ----------
 figma.on("run", () => {
     // Always open UI when plugin is launched
-    figma.showUI(__html__, { width: 260, height: 200 });
-    figma.loadAllPagesAsync().then(() => {
+    figma.showUI(__html__, { width: 260, height: 180 });
+    figma.loadAllPagesAsync().then(() => __awaiter(void 0, void 0, void 0, function* () {
+        // Sync all instances on startup (per new specification)
+        yield syncAll("all");
         figma.on("documentchange", onDocChange);
         figma.on("selectionchange", onSelChange);
-    });
+    }));
 });
 figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
     if (msg.type === "INSERT") {
         yield insertScaleInstance();
-        figma.notify("Scale component inserted!");
+        figma.notify("コンポーネントを作成しました！");
     }
-    if (msg.type === "RUN_ONCE")
-        yield syncAll("selection");
-    if (msg.type === "RUN_ALL")
-        yield syncAll("all");
     if (msg.type === "AUTO_SET") {
         autoMode = !!msg.value;
         figma.notify(`Auto Update: ${autoMode ? "ON" : "OFF"}`);

@@ -1,41 +1,35 @@
-<div class="row">
-    <h3>1.</h3>
-    <div>
-        <button id="insert">コンポーネントを作成</button>
-        <div class="checkbox">
-            <input type="checkbox" id="auto" checked />
-            <label for="auto">Auto Text Update</label>
-        </div>
+<div>
+    <button id="insert">コンポーネントを作成</button>
+    <div class="checkbox">
+        <input type="checkbox" id="auto" checked />
+        <label for="auto">Auto Text Update</label>
     </div>
 </div>
+<!--
 <div class="row">
-    <h3>2.</h3>
+    <h3>3</h3>
     <div>
-        <p>コンポーネントの高さを自由に変更</p>
-    </div>
-</div>
-
-<div class="row">
-    <h3>3.</h3>
-    <div>
-        <p>必要に応じてテキストを手動更新</p>
         <div class="row">
             <button id="run">選択を更新</button>
             <button id="all">すべて更新</button>
         </div>
     </div>
 </div>
+-->
 
 <div class="hint">
-    ※ 自動同期はUIを開いている間だけ有効<br>
-    ※ 同期対象から除外したい場合、インスタンスを切り離してください
+    <ul>
+        <li><strong>自動更新はプラグインUIを開いている間だけ</strong>動作します</li>
+        <li>プラグインを閉じている間に高さやテキストを変更しても、<strong>次回起動時に高さに合わせて自動更新</strong>されます</li>
+        <li>テキストを手動編集したい場合は、インスタンスを切り離してください<small>（自動更新機能が無効になります）</small></li>
+    </ul>
 </div>
 
 <script>
     const post = (type, value) => parent.postMessage({ pluginMessage: { type, value } }, '*');
     document.getElementById('insert').onclick = () => post('INSERT');
-    document.getElementById('run').onclick = () => post('RUN_ONCE');
-    document.getElementById('all').onclick = () => post('RUN_ALL');
+    // document.getElementById('run').onclick = () => post('RUN_ONCE');
+    // document.getElementById('all').onclick = () => post('RUN_ALL');
     const auto = document.getElementById('auto');
     auto.onchange = () => post('AUTO_SET', auto.checked);
 </script>
@@ -45,7 +39,7 @@
     body {
         font-size: 0.75rem;
         margin: 0;
-        padding:0.25rem 0.5rem;
+        padding:1rem 1rem 0.5rem;
     }
     header {
         display: flex;
@@ -61,9 +55,18 @@
     p{
         margin: 0;
     }
+    ul{
+        margin: 0;
+        padding-left: 1.5em;
+    }
+    li{
+        margin-bottom: 0.5em;
+    }
     .checkbox { display: flex; align-items: center; gap: 4px;
         margin-top: 4px; }
+    .checkbox{
+        display: none;
+    }
     button { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; min-height: 40px; }
-    .row { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
     .hint { color: #333; margin-top: 10px; }
 </style>
