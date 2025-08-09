@@ -254,19 +254,20 @@ function onSelChange() {
 }
 
 // ---------- Commands ----------
-figma.on("run", ({ command }) => {
-    if (command === "INSERT") {
-        insertScaleInstance().then(() => figma.closePlugin());
-    } else if (command === "SYNC_UI") {
-        figma.showUI(__html__, { width: 260, height: 140 });
-        figma.loadAllPagesAsync().then(() => {
-            figma.on("documentchange", onDocChange);
-            figma.on("selectionchange", onSelChange);
-        });
-    }
+figma.on("run", () => {
+    // Always open UI when plugin is launched
+    figma.showUI(__html__, { width: 260, height: 200 });
+    figma.loadAllPagesAsync().then(() => {
+        figma.on("documentchange", onDocChange);
+        figma.on("selectionchange", onSelChange);
+    });
 });
 
 figma.ui.onmessage = async (msg) => {
+    if (msg.type === "INSERT") {
+        await insertScaleInstance();
+        figma.notify("Scale component inserted!");
+    }
     if (msg.type === "RUN_ONCE") await syncAll("selection");
     if (msg.type === "RUN_ALL")  await syncAll("all");
     if (msg.type === "AUTO_SET") {
