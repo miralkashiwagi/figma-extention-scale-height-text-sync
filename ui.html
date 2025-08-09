@@ -19,9 +19,9 @@
 
 <div class="hint">
     <ul>
-        <li><strong>自動更新はプラグインUIを開いている間だけ</strong>動作します</li>
-        <li>プラグインを閉じている間に高さやテキストを変更しても、<strong>次回起動時に高さに合わせて自動更新</strong>されます</li>
-        <li>テキストを手動編集したい場合は、インスタンスを切り離してください<small>（自動更新機能が無効になります）</small></li>
+        <li>テキストの自動更新は<strong>プラグインを開いている間だけ</strong>動きます</li>
+        <li>テキストを手動編集する場合、インスタンスを切り離してください<br><small>（自動更新が無効になります）</small></li>
+        <li>プラグインを閉じてからインスタンスの高さ等を変更した場合、<strong>次にプラグインを起動したとき、テキストが自動更新</strong>されます</li>
     </ul>
 </div>
 
@@ -39,7 +39,7 @@
     body {
         font-size: 0.75rem;
         margin: 0;
-        padding:1rem 1rem 0.5rem;
+        padding:1rem 1rem 0rem;
     }
     header {
         display: flex;
@@ -57,7 +57,7 @@
     }
     ul{
         margin: 0;
-        padding-left: 1.5em;
+        padding-left: 1em;
     }
     li{
         margin-bottom: 0.5em;

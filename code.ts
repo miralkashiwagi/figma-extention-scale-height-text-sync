@@ -182,34 +182,26 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
 
     // Create component set from the two components
     const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
+    const vp = figma.viewport.center;
     componentSet.name = SCALE_COMPONENT_NAME;
     componentSet.layoutMode = "HORIZONTAL";
     componentSet.primaryAxisSizingMode = "AUTO";
-    componentSet.counterAxisSizingMode = "FIXED";
+    componentSet.counterAxisSizingMode = "AUTO";
     componentSet.counterAxisAlignItems = "CENTER";
     componentSet.primaryAxisAlignItems = "MIN";
     componentSet.itemSpacing = 10;
-    componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 10;
+    componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 30;
+    componentSet.x = vp.x - componentSet.width;
+    componentSet.y = vp.y - componentSet.height;
+    componentSet.strokes = [
+        {
+            type: "SOLID",
+            color: COLORS.background
+        }
+    ]
     
     // Store the component set ID
     storeScaleComponentId(componentSet.id);
-
-    // Place in a "Components" page if available, else keep in current
-    let targetPage = figma.root.children.find(p => p.type === "PAGE" && p.name.toLowerCase().includes("components")) as PageNode | undefined;
-    if (!targetPage) targetPage = figma.currentPage;
-    const prev = figma.currentPage;
-    if (targetPage !== figma.currentPage) {
-        await figma.setCurrentPageAsync(targetPage);
-    }
-    
-    // Move component set to target page if different
-    if (targetPage !== figma.currentPage) {
-        targetPage.appendChild(componentSet);
-    }
-    
-    if (targetPage !== prev) {
-        await figma.setCurrentPageAsync(prev);
-    }
 
     return { componentSet, vertical, horizontal };
 }
@@ -233,7 +225,7 @@ async function insertScaleInstance() {
 
     figma.currentPage.appendChild(inst);
     figma.currentPage.selection = [inst];
-    figma.viewport.scrollAndZoomIntoView([inst]);
+    // figma.viewport.scrollAndZoomIntoView([inst]);
 
     // Initial sync
     await syncOne(inst);
@@ -370,7 +362,7 @@ function onSelChange() {
 // ---------- Commands ----------
 figma.on("run", () => {
     // Always open UI when plugin is launched
-    figma.showUI(__html__, { width: 260, height: 180 });
+    figma.showUI(__html__, { width: 240, height: 240 });
     figma.loadAllPagesAsync().then(async () => {
         // Sync all instances on startup (per new specification)
         await syncAll("all");
