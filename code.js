@@ -356,7 +356,8 @@ function syncAll() {
                 yield new Promise(resolve => setTimeout(resolve, 0));
             }
         }
-        if (totalUpdated > 0) {
+        // Only show notification during startup sync
+        if (totalUpdated > 0 && isStartupSync) {
             figma.notify(`${totalUpdated}個のインスタンスを更新しました`);
         }
     });
@@ -366,6 +367,7 @@ let ticking = false;
 let debounceTimer = null;
 let documentChangeHandler = null;
 let selectionChangeHandler = null;
+let isStartupSync = false;
 function onDocChange() {
     // Clear existing debounce timer
     if (debounceTimer) {
@@ -407,6 +409,8 @@ function cleanup() {
         figma.off("selectionchange", selectionChangeHandler);
         selectionChangeHandler = null;
     }
+    // Reset startup flag
+    isStartupSync = false;
 }
 // ---------- Commands ----------
 figma.on("run", () => {
@@ -415,8 +419,10 @@ figma.on("run", () => {
     // Always open UI when plugin is launched
     figma.showUI(__html__, { width: 240, height: 240 });
     figma.loadAllPagesAsync().then(() => __awaiter(void 0, void 0, void 0, function* () {
-        // Sync all instances on startup (per new specification)
+        // Set startup flag and sync all instances on startup
+        isStartupSync = true;
         yield syncAll("all");
+        isStartupSync = false;
         // Store references to handlers for cleanup
         documentChangeHandler = onDocChange;
         selectionChangeHandler = onSelChange;
