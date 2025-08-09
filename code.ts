@@ -6,22 +6,9 @@ const SCALE_COMPONENT_ID_KEY = "scaleComponentId";
 const VALUE_NODE_NAME = "value";
 const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 
-async function ensureFontsFor(text: TextNode) {
-    const fonts: FontName[] = [];
-    if ((text.fontName as unknown) === figma.mixed) {
-        for (const f of text.getRangeAllFontNames(0, text.characters.length)) fonts.push(f);
-    } else {
-        fonts.push(text.fontName as FontName);
-    }
-    const uniq = new Map<string, FontName>();
-    for (const f of fonts) uniq.set(`${f.family}__${f.style}`, f);
-    for (const f of uniq.values()) {
-        try { await figma.loadFontAsync(f); } catch (e) { console.warn('Font load failed:', e); }
-    }
-}
-
 async function setText(text: TextNode, s: string) {
-    await ensureFontsFor(text);
+    // Load Inter font (our standard font for this plugin)
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(()=>{});
     try { 
         text.characters = s;
         text.locked = true;
@@ -31,6 +18,13 @@ async function setText(text: TextNode, s: string) {
 }
 
 function px(n: number) { return `${Math.round(n)}px`; }
+
+// Helper function to extract vertical and horizontal components from component set
+function extractComponents(componentSet: ComponentSetNode): {vertical: ComponentNode, horizontal: ComponentNode} | null {
+    const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical")) as ComponentNode;
+    const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal")) as ComponentNode;
+    return (vertical && horizontal) ? { vertical, horizontal } : null;
+}
 
 // Common styling constants
 const COLORS = {
@@ -112,7 +106,7 @@ function storeScaleComponentId(componentId: string) {
 }
 
 // Create the Scale component set (if not exists), return the component set and its variants
-async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentSetNode, vertical: ComponentNode, horizontal: ComponentNode}> {
+async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: number}): Promise<{componentSet: ComponentSetNode, vertical: ComponentNode, horizontal: ComponentNode}> {
     // Load all pages first for dynamic-page access
     await figma.loadAllPagesAsync();
     
@@ -137,10 +131,9 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
                 const existing = await figma.getNodeByIdAsync(storedId);
                 if (existing && existing.type === "COMPONENT_SET") {
                     const componentSet = existing as ComponentSetNode;
-                    const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical")) as ComponentNode;
-                    const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal")) as ComponentNode;
-                    if (vertical && horizontal) {
-                        return { componentSet, vertical, horizontal };
+                    const components = extractComponents(componentSet);
+                    if (components) {
+                        return { componentSet, ...components };
                     }
                 }
             } catch (e) {
@@ -154,10 +147,9 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
         if (existing) {
             // Store the ID for future reference
             storeScaleComponentId(existing.id);
-            const vertical = existing.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical")) as ComponentNode;
-            const horizontal = existing.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal")) as ComponentNode;
-            if (vertical && horizontal) {
-                return { componentSet: existing, vertical, horizontal };
+            const components = extractComponents(existing);
+            if (components) {
+                return { componentSet: existing, ...components };
             }
         }
     }
@@ -187,7 +179,6 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
 
     // Create component set from the two components
     const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
-    const vp = figma.viewport.center;
     componentSet.name = SCALE_COMPONENT_NAME;
     componentSet.layoutMode = "HORIZONTAL";
     componentSet.primaryAxisSizingMode = "AUTO";
@@ -196,8 +187,12 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
     componentSet.primaryAxisAlignItems = "MIN";
     componentSet.itemSpacing = 10;
     componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 30;
-    componentSet.x = vp.x - componentSet.width;
-    componentSet.y = vp.y - componentSet.height;
+    
+    // Position component set near viewport center if provided
+    if (viewportCenter) {
+        componentSet.x = viewportCenter.x - componentSet.width;
+        componentSet.y = viewportCenter.y - componentSet.height;
+    }
     componentSet.strokes = [
         {
             type: "SOLID",
@@ -213,7 +208,9 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
 
 // Insert one instance near selection center
 async function insertScaleInstance() {
-    const { componentSet, vertical } = await getOrCreateScaleComponentSet();
+    // Get viewport center once for both component set and instance positioning
+    const vp = figma.viewport.center;
+    const { vertical } = await getOrCreateScaleComponentSet(vp);
     const inst = vertical.createInstance();
     inst.name = SCALE_COMPONENT_NAME;
 
@@ -223,14 +220,11 @@ async function insertScaleInstance() {
         textNode.name = VALUE_NODE_NAME;
     }
 
-    // Drop near viewport center
-    const vp = figma.viewport.center;
     inst.x = vp.x;
     inst.y = vp.y;
 
     figma.currentPage.appendChild(inst);
     figma.currentPage.selection = [inst];
-    // figma.viewport.scrollAndZoomIntoView([inst]);
 
     // Initial sync
     await syncOne(inst);
@@ -260,7 +254,6 @@ async function syncOne(inst: InstanceNode) {
         return;
     }
     
-    
     const t = findValueText(inst);
     if (!t) {
         return;
@@ -280,7 +273,6 @@ async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<In
     if (scope === "all") {
         await figma.loadAllPagesAsync();
     }
-
     
     let roots: ReadonlyArray<BaseNode & ChildrenMixin>;
     
@@ -294,7 +286,6 @@ async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<In
         // 現在のページ検索（selection modeで選択が空の場合）
         roots = [figma.currentPage as BaseNode & ChildrenMixin];
     }
-
 
     const found: InstanceNode[] = [];
     for (const r of roots) {

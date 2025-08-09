@@ -13,32 +13,10 @@ function isText(n) { return n.type === "TEXT"; }
 const SCALE_COMPONENT_ID_KEY = "scaleComponentId";
 const VALUE_NODE_NAME = "value";
 const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
-function ensureFontsFor(text) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const fonts = [];
-        if (text.fontName === figma.mixed) {
-            for (const f of text.getRangeAllFontNames(0, text.characters.length))
-                fonts.push(f);
-        }
-        else {
-            fonts.push(text.fontName);
-        }
-        const uniq = new Map();
-        for (const f of fonts)
-            uniq.set(`${f.family}__${f.style}`, f);
-        for (const f of uniq.values()) {
-            try {
-                yield figma.loadFontAsync(f);
-            }
-            catch (e) {
-                console.warn('Font load failed:', e);
-            }
-        }
-    });
-}
 function setText(text, s) {
     return __awaiter(this, void 0, void 0, function* () {
-        yield ensureFontsFor(text);
+        // Load Inter font (our standard font for this plugin)
+        yield figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(() => { });
         try {
             text.characters = s;
             text.locked = true;
@@ -49,6 +27,12 @@ function setText(text, s) {
     });
 }
 function px(n) { return `${Math.round(n)}px`; }
+// Helper function to extract vertical and horizontal components from component set
+function extractComponents(componentSet) {
+    const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical"));
+    const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal"));
+    return (vertical && horizontal) ? { vertical, horizontal } : null;
+}
 // Common styling constants
 const COLORS = {
     background: { r: 1, g: 0, b: 0.3 },
@@ -123,7 +107,7 @@ function storeScaleComponentId(componentId) {
     figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, componentId);
 }
 // Create the Scale component set (if not exists), return the component set and its variants
-function getOrCreateScaleComponentSet() {
+function getOrCreateScaleComponentSet(viewportCenter) {
     return __awaiter(this, void 0, void 0, function* () {
         // Load all pages first for dynamic-page access
         yield figma.loadAllPagesAsync();
@@ -145,10 +129,9 @@ function getOrCreateScaleComponentSet() {
                     const existing = yield figma.getNodeByIdAsync(storedId);
                     if (existing && existing.type === "COMPONENT_SET") {
                         const componentSet = existing;
-                        const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical"));
-                        const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal"));
-                        if (vertical && horizontal) {
-                            return { componentSet, vertical, horizontal };
+                        const components = extractComponents(componentSet);
+                        if (components) {
+                            return Object.assign({ componentSet }, components);
                         }
                     }
                 }
@@ -162,10 +145,9 @@ function getOrCreateScaleComponentSet() {
             if (existing) {
                 // Store the ID for future reference
                 storeScaleComponentId(existing.id);
-                const vertical = existing.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical"));
-                const horizontal = existing.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal"));
-                if (vertical && horizontal) {
-                    return { componentSet: existing, vertical, horizontal };
+                const components = extractComponents(existing);
+                if (components) {
+                    return Object.assign({ componentSet: existing }, components);
                 }
             }
         }
@@ -187,7 +169,6 @@ function getOrCreateScaleComponentSet() {
         setupLinePositioning(horizontalLine);
         // Create component set from the two components
         const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
-        const vp = figma.viewport.center;
         componentSet.name = SCALE_COMPONENT_NAME;
         componentSet.layoutMode = "HORIZONTAL";
         componentSet.primaryAxisSizingMode = "AUTO";
@@ -196,8 +177,11 @@ function getOrCreateScaleComponentSet() {
         componentSet.primaryAxisAlignItems = "MIN";
         componentSet.itemSpacing = 10;
         componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 30;
-        componentSet.x = vp.x - componentSet.width;
-        componentSet.y = vp.y - componentSet.height;
+        // Position component set near viewport center if provided
+        if (viewportCenter) {
+            componentSet.x = viewportCenter.x - componentSet.width;
+            componentSet.y = viewportCenter.y - componentSet.height;
+        }
         componentSet.strokes = [
             {
                 type: "SOLID",
@@ -212,7 +196,9 @@ function getOrCreateScaleComponentSet() {
 // Insert one instance near selection center
 function insertScaleInstance() {
     return __awaiter(this, void 0, void 0, function* () {
-        const { componentSet, vertical } = yield getOrCreateScaleComponentSet();
+        // Get viewport center once for both component set and instance positioning
+        const vp = figma.viewport.center;
+        const { vertical } = yield getOrCreateScaleComponentSet(vp);
         const inst = vertical.createInstance();
         inst.name = SCALE_COMPONENT_NAME;
         // Rename the text node in the instance to match VALUE_NODE_NAME
@@ -220,13 +206,10 @@ function insertScaleInstance() {
         if (textNode) {
             textNode.name = VALUE_NODE_NAME;
         }
-        // Drop near viewport center
-        const vp = figma.viewport.center;
         inst.x = vp.x;
         inst.y = vp.y;
         figma.currentPage.appendChild(inst);
         figma.currentPage.selection = [inst];
-        // figma.viewport.scrollAndZoomIntoView([inst]);
         // Initial sync
         yield syncOne(inst);
     });
