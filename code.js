@@ -347,16 +347,30 @@ function syncAll() {
 // ---------- Auto mode while UI is open ----------
 let autoMode = true;
 let ticking = false;
+let debounceTimer = null;
 function onDocChange() {
     if (!autoMode)
         return;
+    // Clear existing debounce timer
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
+    // Don't start new timer if already processing
     if (ticking)
         return;
-    ticking = true;
-    setTimeout(() => __awaiter(this, void 0, void 0, function* () {
-        ticking = false;
-        yield syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
-    }), 120);
+    // Set debounce timer - longer delay to reduce updates during continuous resizing
+    debounceTimer = setTimeout(() => __awaiter(this, void 0, void 0, function* () {
+        if (ticking)
+            return;
+        ticking = true;
+        debounceTimer = null;
+        try {
+            yield syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
+        }
+        finally {
+            ticking = false;
+        }
+    }), 250); // Increased from 120ms to 250ms for better performance during resizing
 }
 function onSelChange() {
     if (!autoMode)

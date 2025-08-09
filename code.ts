@@ -370,15 +370,31 @@ async function syncAll(scope: "all" | "selection" = "all") {
 // ---------- Auto mode while UI is open ----------
 let autoMode = true;
 let ticking = false;
+let debounceTimer: number | null = null;
 
 function onDocChange() {
     if (!autoMode) return;
+    
+    // Clear existing debounce timer
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
+    
+    // Don't start new timer if already processing
     if (ticking) return;
-    ticking = true;
-    setTimeout(async () => {
-        ticking = false;
-        await syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
-    }, 120);
+    
+    // Set debounce timer - longer delay to reduce updates during continuous resizing
+    debounceTimer = setTimeout(async () => {
+        if (ticking) return;
+        ticking = true;
+        debounceTimer = null;
+        
+        try {
+            await syncAll("selection"); // 変更頻度を考慮して選択範囲優先。必要なら "all" に変更
+        } finally {
+            ticking = false;
+        }
+    }, 250); // Increased from 120ms to 250ms for better performance during resizing
 }
 
 function onSelChange() {
