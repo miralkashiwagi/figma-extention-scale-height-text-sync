@@ -241,10 +241,16 @@ function findValueText(inst: InstanceNode): TextNode | null {
 async function isScaleInstance(inst: InstanceNode): Promise<boolean> {
     const storedId = getStoredScaleComponentId();
     if (storedId) {
-        const mainComp = await inst.getMainComponentAsync();
-        if (mainComp) {
-            // Check if main component belongs to our stored component set
-            return mainComp.parent?.id === storedId;
+        try {
+            const mainComp = await inst.getMainComponentAsync();
+            if (mainComp) {
+                // Check if main component belongs to our stored component set
+                return mainComp.parent?.id === storedId;
+            }
+        } catch (e) {
+            // Main component doesn't exist (deleted, or broken reference)
+            console.warn('Main component not found for instance:', inst.id, e);
+            return false;
         }
     }
     return false;
@@ -319,7 +325,9 @@ async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<In
 async function syncAll(scope: "all" | "selection" = "all") {
     const list = await getScaleInstances(scope);
     for (const inst of list) await syncOne(inst);
-    figma.notify(`Synced ${list.length} scale instance(s).`);
+    if(list.length > 0){
+        figma.notify(`インスタンスのテキストを自動更新しました`);
+    }
 }
 
 // ---------- Auto sync while UI is open ----------

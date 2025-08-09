@@ -229,10 +229,17 @@ function isScaleInstance(inst) {
         var _a;
         const storedId = getStoredScaleComponentId();
         if (storedId) {
-            const mainComp = yield inst.getMainComponentAsync();
-            if (mainComp) {
-                // Check if main component belongs to our stored component set
-                return ((_a = mainComp.parent) === null || _a === void 0 ? void 0 : _a.id) === storedId;
+            try {
+                const mainComp = yield inst.getMainComponentAsync();
+                if (mainComp) {
+                    // Check if main component belongs to our stored component set
+                    return ((_a = mainComp.parent) === null || _a === void 0 ? void 0 : _a.id) === storedId;
+                }
+            }
+            catch (e) {
+                // Main component doesn't exist (deleted, or broken reference)
+                console.warn('Main component not found for instance:', inst.id, e);
+                return false;
             }
         }
         return false;
@@ -305,7 +312,9 @@ function syncAll() {
         const list = yield getScaleInstances(scope);
         for (const inst of list)
             yield syncOne(inst);
-        figma.notify(`Synced ${list.length} scale instance(s).`);
+        if (list.length > 0) {
+            figma.notify(`インスタンスのテキストを自動更新しました`);
+        }
     });
 }
 // ---------- Auto sync while UI is open ----------
