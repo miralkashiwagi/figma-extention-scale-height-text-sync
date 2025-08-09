@@ -104,8 +104,8 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     // Background fill: semi-transparent red
     vertical.fills = [{
         type: "SOLID",
-        opacity: 0.2,
-        color: { r: 1, g: 0, b: 0.3486238718032837 }
+        opacity: 0.1,
+        color: { r: 1, g: 0, b: 0.3 }
     }];
 
     // Remove stroke
@@ -123,7 +123,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     // Text color: dark pink
     verticalText.fills = [{
         type: "SOLID",
-        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+        color: { r: 0.85, g: 0, b: 0.3 }
     }];
 
     vertical.appendChild(verticalText);
@@ -135,7 +135,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     verticalLine.rotation = -90;
     verticalLine.strokes = [{
         type: "SOLID",
-        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+        color: { r: 0.85, g: 0, b: 0.3 }
     }];
     verticalLine.strokeWeight = 1;
     verticalLine.strokeAlign = "CENTER";
@@ -164,8 +164,8 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     // Background fill: semi-transparent red
     horizontal.fills = [{
         type: "SOLID",
-        opacity: 0.2,
-        color: { r: 1, g: 0, b: 0.3486238718032837 }
+        opacity: 0.1,
+        color: { r: 1, g: 0, b: 0.3 }
     }];
 
     // Remove stroke
@@ -187,7 +187,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     // Text color: dark pink
     horizontalText.fills = [{
         type: "SOLID",
-        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+        color: { r: 0.85, g: 0, b: 0.3 }
     }];
 
     horizontal.appendChild(horizontalText);
@@ -200,7 +200,7 @@ async function getOrCreateScaleComponentSet(): Promise<{vertical: ComponentNode,
     horizontalLine.rotation = -90;
     horizontalLine.strokes = [{
         type: "SOLID",
-        color: { r: 0.8548077940940857, g: 0, b: 0.2991827130317688 }
+        color: { r: 0.85, g: 0, b: 0.3 }
     }];
     horizontalLine.strokeWeight = 1;
     horizontalLine.strokeAlign = "CENTER";
@@ -305,6 +305,12 @@ async function syncOne(inst: InstanceNode) {
     }
     const newText = px(inst.height);
     await setText(t, newText);
+    
+    // Update stroke weight based on height
+    const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow") as LineNode | null;
+    if (line) {
+        line.strokeWeight = inst.height <= 10 ? 0.5 : 1;
+    }
 }
 
 // Collect all scale instances in the document (optionally within selection)
