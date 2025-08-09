@@ -348,27 +348,49 @@ async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<In
 async function syncAll(scope: "all" | "selection" = "all") {
     const list = await getScaleInstances(scope);
     
-    // Filter to only instances that need updates
-    const instancesNeedingUpdate: InstanceNode[] = [];
-    for (const inst of list) {
-        if (await needsUpdate(inst)) {
-            instancesNeedingUpdate.push(inst);
+    // Early return if no instances found
+    if (list.length === 0) {
+        return;
+    }
+    
+    // Process in batches to avoid memory spikes with large numbers of instances
+    const BATCH_SIZE = 50;
+    let totalUpdated = 0;
+    
+    for (let i = 0; i < list.length; i += BATCH_SIZE) {
+        const batch = list.slice(i, i + BATCH_SIZE);
+        const instancesNeedingUpdate: InstanceNode[] = [];
+        
+        // Filter batch to only instances that need updates
+        for (const inst of batch) {
+            if (await needsUpdate(inst)) {
+                instancesNeedingUpdate.push(inst);
+            }
+        }
+        
+        // Sync instances in this batch
+        for (const inst of instancesNeedingUpdate) {
+            await syncOne(inst);
+        }
+        
+        totalUpdated += instancesNeedingUpdate.length;
+        
+        // Allow other operations between batches
+        if (i + BATCH_SIZE < list.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
     
-    // Only sync instances that actually need updates
-    for (const inst of instancesNeedingUpdate) {
-        await syncOne(inst);
-    }
-    
-    if (instancesNeedingUpdate.length > 0) {
-        figma.notify(`${instancesNeedingUpdate.length}個のインスタンスを更新しました`);
+    if (totalUpdated > 0) {
+        figma.notify(`${totalUpdated}個のインスタンスを更新しました`);
     }
 }
 
 // ---------- Auto sync while UI is open ----------
 let ticking = false;
 let debounceTimer: number | null = null;
+let documentChangeHandler: (() => void) | null = null;
+let selectionChangeHandler: (() => void) | null = null;
 
 function onDocChange() {
     // Clear existing debounce timer
@@ -397,18 +419,49 @@ function onSelChange() {
     syncAll("selection").catch(console.error);
 }
 
+// Clean up function to remove event listeners and timers
+function cleanup() {
+    // Clear any pending timer
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
+    
+    // Remove event listeners if they exist
+    if (documentChangeHandler) {
+        figma.off("documentchange", documentChangeHandler);
+        documentChangeHandler = null;
+    }
+    
+    if (selectionChangeHandler) {
+        figma.off("selectionchange", selectionChangeHandler);
+        selectionChangeHandler = null;
+    }
+}
+
 // ---------- Commands ----------
 figma.on("run", () => {
+    // Clean up any existing listeners first
+    cleanup();
+    
     // Always open UI when plugin is launched
     figma.showUI(__html__, { width: 240, height: 240 });
     figma.loadAllPagesAsync().then(async () => {
         // Sync all instances on startup (per new specification)
         await syncAll("all");
         
-        figma.on("documentchange", onDocChange);
-        figma.on("selectionchange", onSelChange);
+        // Store references to handlers for cleanup
+        documentChangeHandler = onDocChange;
+        selectionChangeHandler = onSelChange;
+        
+        // Add event listeners
+        figma.on("documentchange", documentChangeHandler);
+        figma.on("selectionchange", selectionChangeHandler);
     });
 });
+
+// Clean up when plugin closes
+figma.on("close", cleanup);
 
 figma.ui.onmessage = async (msg) => {
     if (msg.type === "INSERT") {
