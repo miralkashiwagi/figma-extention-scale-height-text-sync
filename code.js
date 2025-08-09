@@ -245,6 +245,26 @@ function isScaleInstance(inst) {
         return false;
     });
 }
+// Check if instance needs text/stroke update
+function needsUpdate(inst) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!(yield isScaleInstance(inst))) {
+            return false;
+        }
+        const t = findValueText(inst);
+        if (!t) {
+            return false;
+        }
+        // Check if text needs update
+        const expectedText = px(inst.height);
+        const textNeedsUpdate = t.characters !== expectedText;
+        // Check if stroke weight needs update
+        const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow");
+        const expectedStrokeWeight = inst.height <= 10 ? 0.5 : 1;
+        const strokeNeedsUpdate = line ? line.strokeWeight !== expectedStrokeWeight : false;
+        return textNeedsUpdate || strokeNeedsUpdate;
+    });
+}
 // Sync a single instance's text to its own height
 function syncOne(inst) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -310,10 +330,19 @@ function getScaleInstances() {
 function syncAll() {
     return __awaiter(this, arguments, void 0, function* (scope = "all") {
         const list = yield getScaleInstances(scope);
-        for (const inst of list)
+        // Filter to only instances that need updates
+        const instancesNeedingUpdate = [];
+        for (const inst of list) {
+            if (yield needsUpdate(inst)) {
+                instancesNeedingUpdate.push(inst);
+            }
+        }
+        // Only sync instances that actually need updates
+        for (const inst of instancesNeedingUpdate) {
             yield syncOne(inst);
-        if (list.length > 0) {
-            figma.notify(`インスタンスのテキストを自動更新しました`);
+        }
+        if (instancesNeedingUpdate.length > 0) {
+            figma.notify(`${instancesNeedingUpdate.length}個のインスタンスを更新しました`);
         }
     });
 }
