@@ -8,7 +8,7 @@ const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 
 async function setText(text: TextNode, s: string) {
     // Load Inter font (our standard font for this plugin)
-    await figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(()=>{});
+    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
     try { 
         text.characters = s;
         text.locked = true;
@@ -26,18 +26,23 @@ function extractComponents(componentSet: ComponentSetNode): {vertical: Component
     return (vertical && horizontal) ? { vertical, horizontal } : null;
 }
 
-// Common styling constants
-const COLORS = {
-    background: { r: 1, g: 0, b: 0.3 },
-    foreground: { r: 0.85, g: 0, b: 0.3 }
+// Common constants
+const CONSTANTS = {
+    COLORS: {
+        background: { r: 1, g: 0, b: 0.3 },
+        foreground: { r: 0.85, g: 0, b: 0.3 }
+    },
+    FONT: { family: "Inter", style: "Regular" as const },
+    COMPONENT_SIZE: { width: 64, height: 80 },
+    LINE_SIZE: 80
 };
 
 // Helper function to create and setup text node
 async function createTextNode(height: number, rotation: number = 0): Promise<TextNode> {
     const text = figma.createText();
     text.name = VALUE_NODE_NAME;
-    await figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(()=>{});
-    text.fontName = { family: "Inter", style: "Regular" };
+    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
+    text.fontName = CONSTANTS.FONT;
     text.lineHeight = { value: 100, unit: "PERCENT" };
     text.fontSize = 14;
     text.characters = px(height);
@@ -45,7 +50,7 @@ async function createTextNode(height: number, rotation: number = 0): Promise<Tex
     text.rotation = rotation;
     text.fills = [{
         type: "SOLID",
-        color: COLORS.foreground
+        color: CONSTANTS.COLORS.foreground
     }];
     return text;
 }
@@ -54,11 +59,11 @@ async function createTextNode(height: number, rotation: number = 0): Promise<Tex
 function createLineNode(): LineNode {
     const line = figma.createLine();
     line.name = "Arrow";
-    line.resize(80, 0);
+    line.resize(CONSTANTS.LINE_SIZE, 0);
     line.rotation = -90;
     line.strokes = [{
         type: "SOLID",
-        color: COLORS.foreground
+        color: CONSTANTS.COLORS.foreground
     }];
     line.strokeWeight = 1;
     line.strokeAlign = "CENTER";
@@ -77,7 +82,7 @@ function setupLinePositioning(line: LineNode): void {
 // Helper function to setup component base properties
 function setupComponentBase(component: ComponentNode, name: string, rotation: number = 0): void {
     component.name = name;
-    component.resizeWithoutConstraints(64, 80);
+    component.resizeWithoutConstraints(CONSTANTS.COMPONENT_SIZE.width, CONSTANTS.COMPONENT_SIZE.height);
     component.layoutMode = "HORIZONTAL";
     component.primaryAxisSizingMode = "FIXED";
     component.counterAxisSizingMode = "FIXED";
@@ -88,10 +93,25 @@ function setupComponentBase(component: ComponentNode, name: string, rotation: nu
     component.fills = [{
         type: "SOLID",
         opacity: 0.1,
-        color: COLORS.background
+        color: CONSTANTS.COLORS.background
     }];
     component.strokes = [];
     component.rotation = rotation;
+}
+
+// Helper function to create a complete component (text + line)
+async function createScaleComponent(name: string, componentRotation: number, textRotation: number): Promise<ComponentNode> {
+    const component = figma.createComponent();
+    setupComponentBase(component, name, componentRotation);
+
+    const text = await createTextNode(component.height, textRotation);
+    const line = createLineNode();
+
+    component.appendChild(text);
+    component.appendChild(line);
+    setupLinePositioning(line);
+
+    return component;
 }
 
 
@@ -154,27 +174,9 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
         }
     }
 
-    // Create vertical component
-    const vertical = figma.createComponent();
-    setupComponentBase(vertical, "Orientation=Vertical", 0);
-
-    const verticalText = await createTextNode(vertical.height, 0);
-    const verticalLine = createLineNode();
-
-    vertical.appendChild(verticalText);
-    vertical.appendChild(verticalLine);
-    setupLinePositioning(verticalLine);
-
-    // Create horizontal component
-    const horizontal = figma.createComponent();
-    setupComponentBase(horizontal, "Orientation=Horizontal", -90);
-
-    const horizontalText = await createTextNode(horizontal.height, 90);
-    const horizontalLine = createLineNode();
-
-    horizontal.appendChild(horizontalText);
-    horizontal.appendChild(horizontalLine);
-    setupLinePositioning(horizontalLine);
+    // Create vertical and horizontal components
+    const vertical = await createScaleComponent("Orientation=Vertical", 0, 0);
+    const horizontal = await createScaleComponent("Orientation=Horizontal", -90, 90);
 
 
     // Create component set from the two components
@@ -196,7 +198,7 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
     componentSet.strokes = [
         {
             type: "SOLID",
-            color: COLORS.background
+            color: CONSTANTS.COLORS.background
         }
     ]
     

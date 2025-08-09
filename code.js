@@ -16,7 +16,7 @@ const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 function setText(text, s) {
     return __awaiter(this, void 0, void 0, function* () {
         // Load Inter font (our standard font for this plugin)
-        yield figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(() => { });
+        yield figma.loadFontAsync(CONSTANTS.FONT).catch(() => { });
         try {
             text.characters = s;
             text.locked = true;
@@ -33,18 +33,23 @@ function extractComponents(componentSet) {
     const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal"));
     return (vertical && horizontal) ? { vertical, horizontal } : null;
 }
-// Common styling constants
-const COLORS = {
-    background: { r: 1, g: 0, b: 0.3 },
-    foreground: { r: 0.85, g: 0, b: 0.3 }
+// Common constants
+const CONSTANTS = {
+    COLORS: {
+        background: { r: 1, g: 0, b: 0.3 },
+        foreground: { r: 0.85, g: 0, b: 0.3 }
+    },
+    FONT: { family: "Inter", style: "Regular" },
+    COMPONENT_SIZE: { width: 64, height: 80 },
+    LINE_SIZE: 80
 };
 // Helper function to create and setup text node
 function createTextNode(height_1) {
     return __awaiter(this, arguments, void 0, function* (height, rotation = 0) {
         const text = figma.createText();
         text.name = VALUE_NODE_NAME;
-        yield figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(() => { });
-        text.fontName = { family: "Inter", style: "Regular" };
+        yield figma.loadFontAsync(CONSTANTS.FONT).catch(() => { });
+        text.fontName = CONSTANTS.FONT;
         text.lineHeight = { value: 100, unit: "PERCENT" };
         text.fontSize = 14;
         text.characters = px(height);
@@ -52,7 +57,7 @@ function createTextNode(height_1) {
         text.rotation = rotation;
         text.fills = [{
                 type: "SOLID",
-                color: COLORS.foreground
+                color: CONSTANTS.COLORS.foreground
             }];
         return text;
     });
@@ -61,11 +66,11 @@ function createTextNode(height_1) {
 function createLineNode() {
     const line = figma.createLine();
     line.name = "Arrow";
-    line.resize(80, 0);
+    line.resize(CONSTANTS.LINE_SIZE, 0);
     line.rotation = -90;
     line.strokes = [{
             type: "SOLID",
-            color: COLORS.foreground
+            color: CONSTANTS.COLORS.foreground
         }];
     line.strokeWeight = 1;
     line.strokeAlign = "CENTER";
@@ -82,7 +87,7 @@ function setupLinePositioning(line) {
 // Helper function to setup component base properties
 function setupComponentBase(component, name, rotation = 0) {
     component.name = name;
-    component.resizeWithoutConstraints(64, 80);
+    component.resizeWithoutConstraints(CONSTANTS.COMPONENT_SIZE.width, CONSTANTS.COMPONENT_SIZE.height);
     component.layoutMode = "HORIZONTAL";
     component.primaryAxisSizingMode = "FIXED";
     component.counterAxisSizingMode = "FIXED";
@@ -93,10 +98,23 @@ function setupComponentBase(component, name, rotation = 0) {
     component.fills = [{
             type: "SOLID",
             opacity: 0.1,
-            color: COLORS.background
+            color: CONSTANTS.COLORS.background
         }];
     component.strokes = [];
     component.rotation = rotation;
+}
+// Helper function to create a complete component (text + line)
+function createScaleComponent(name, componentRotation, textRotation) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const component = figma.createComponent();
+        setupComponentBase(component, name, componentRotation);
+        const text = yield createTextNode(component.height, textRotation);
+        const line = createLineNode();
+        component.appendChild(text);
+        component.appendChild(line);
+        setupLinePositioning(line);
+        return component;
+    });
 }
 // Get stored scale component ID or null
 function getStoredScaleComponentId() {
@@ -151,22 +169,9 @@ function getOrCreateScaleComponentSet(viewportCenter) {
                 }
             }
         }
-        // Create vertical component
-        const vertical = figma.createComponent();
-        setupComponentBase(vertical, "Orientation=Vertical", 0);
-        const verticalText = yield createTextNode(vertical.height, 0);
-        const verticalLine = createLineNode();
-        vertical.appendChild(verticalText);
-        vertical.appendChild(verticalLine);
-        setupLinePositioning(verticalLine);
-        // Create horizontal component
-        const horizontal = figma.createComponent();
-        setupComponentBase(horizontal, "Orientation=Horizontal", -90);
-        const horizontalText = yield createTextNode(horizontal.height, 90);
-        const horizontalLine = createLineNode();
-        horizontal.appendChild(horizontalText);
-        horizontal.appendChild(horizontalLine);
-        setupLinePositioning(horizontalLine);
+        // Create vertical and horizontal components
+        const vertical = yield createScaleComponent("Orientation=Vertical", 0, 0);
+        const horizontal = yield createScaleComponent("Orientation=Horizontal", -90, 90);
         // Create component set from the two components
         const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
         componentSet.name = SCALE_COMPONENT_NAME;
@@ -185,7 +190,7 @@ function getOrCreateScaleComponentSet(viewportCenter) {
         componentSet.strokes = [
             {
                 type: "SOLID",
-                color: COLORS.background
+                color: CONSTANTS.COLORS.background
             }
         ];
         // Store the component set ID
