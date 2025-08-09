@@ -322,14 +322,11 @@ async function syncAll(scope: "all" | "selection" = "all") {
     figma.notify(`Synced ${list.length} scale instance(s).`);
 }
 
-// ---------- Auto mode while UI is open ----------
-let autoMode = true;
+// ---------- Auto sync while UI is open ----------
 let ticking = false;
 let debounceTimer: number | null = null;
 
 function onDocChange() {
-    if (!autoMode) return;
-    
     // Clear existing debounce timer
     if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -353,7 +350,6 @@ function onDocChange() {
 }
 
 function onSelChange() {
-    if (!autoMode) return;
     syncAll("selection").catch(console.error);
 }
 
@@ -374,9 +370,5 @@ figma.ui.onmessage = async (msg) => {
     if (msg.type === "INSERT") {
         await insertScaleInstance();
         figma.notify("コンポーネントを作成しました！");
-    }
-    if (msg.type === "AUTO_SET") {
-        autoMode = !!msg.value;
-        figma.notify(`Auto Update: ${autoMode ? "ON" : "OFF"}`);
     }
 };

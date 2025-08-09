@@ -1,21 +1,6 @@
 <div>
     <button id="insert">コンポーネントを作成</button>
-    <div class="checkbox">
-        <input type="checkbox" id="auto" checked />
-        <label for="auto">Auto Text Update</label>
-    </div>
 </div>
-<!--
-<div class="row">
-    <h3>3</h3>
-    <div>
-        <div class="row">
-            <button id="run">選択を更新</button>
-            <button id="all">すべて更新</button>
-        </div>
-    </div>
-</div>
--->
 
 <div class="hint">
     <ul>
@@ -28,10 +13,6 @@
 <script>
     const post = (type, value) => parent.postMessage({ pluginMessage: { type, value } }, '*');
     document.getElementById('insert').onclick = () => post('INSERT');
-    // document.getElementById('run').onclick = () => post('RUN_ONCE');
-    // document.getElementById('all').onclick = () => post('RUN_ALL');
-    const auto = document.getElementById('auto');
-    auto.onchange = () => post('AUTO_SET', auto.checked);
 </script>
 
 
@@ -41,31 +22,12 @@
         margin: 0;
         padding:1rem 1rem 0rem;
     }
-    header {
-        display: flex;
-        border-bottom: 1px solid #ccc;
-    }
-    h2,h3{
-        margin:0;
-        font-size: inherit;
-    }
-    h3{
-        font-size: 0.6rem;
-    }
-    p{
-        margin: 0;
-    }
     ul{
         margin: 0;
         padding-left: 1em;
     }
     li{
         margin-bottom: 0.5em;
-    }
-    .checkbox { display: flex; align-items: center; gap: 4px;
-        margin-top: 4px; }
-    .checkbox{
-        display: none;
     }
     button { padding: 6px 10px; border: 1px solid #fff; box-shadow: 1px 1px 0 0 #333333; background: #333333; transition: background-color 0.2s; color:#fff; border-radius: 6px; cursor: pointer; min-height: 40px; }
     button:hover { background: #000; }

@@ -308,13 +308,10 @@ function syncAll() {
         figma.notify(`Synced ${list.length} scale instance(s).`);
     });
 }
-// ---------- Auto mode while UI is open ----------
-let autoMode = true;
+// ---------- Auto sync while UI is open ----------
 let ticking = false;
 let debounceTimer = null;
 function onDocChange() {
-    if (!autoMode)
-        return;
     // Clear existing debounce timer
     if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -337,8 +334,6 @@ function onDocChange() {
     }), 250); // Increased from 120ms to 250ms for better performance during resizing
 }
 function onSelChange() {
-    if (!autoMode)
-        return;
     syncAll("selection").catch(console.error);
 }
 // ---------- Commands ----------
@@ -356,9 +351,5 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
     if (msg.type === "INSERT") {
         yield insertScaleInstance();
         figma.notify("コンポーネントを作成しました！");
-    }
-    if (msg.type === "AUTO_SET") {
-        autoMode = !!msg.value;
-        figma.notify(`Auto Update: ${autoMode ? "ON" : "OFF"}`);
     }
 });
