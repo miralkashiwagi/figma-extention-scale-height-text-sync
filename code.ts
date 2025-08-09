@@ -7,7 +7,7 @@ const VALUE_NODE_NAME = "value";
 const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
 
 async function setText(text: TextNode, s: string) {
-    // Load Inter font (our standard font for this plugin)
+    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
     try {
         text.characters = s;
         text.locked = true;
