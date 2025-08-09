@@ -1,0 +1,22 @@
+{
+  "name": "Scale: Height→Text Sync",
+  "id": "1535615262811740523",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "menu": [
+    { "name": "Scaleコンポーネントを生成＆挿入", "command": "INSERT" },
+    { "name": "（UIあり）自動同期ON/OFF＋手動更新", "command": "SYNC_UI" }
+  ],
+  "capabilities": [],
+  "enableProposedApi": false,
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma"
+  ],
+  "networkAccess": {
+    "allowedDomains": [
+      "none"
+    ]
+  }
+}
