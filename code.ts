@@ -133,14 +133,19 @@ async function getOrCreateScaleComponentSet(): Promise<{componentSet: ComponentS
         // Try find by stored Component ID first
         const storedId = getStoredScaleComponentId();
         if (storedId) {
-            const existing = await figma.getNodeByIdAsync(storedId);
-            if (existing && existing.type === "COMPONENT_SET") {
-                const componentSet = existing as ComponentSetNode;
-                const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical")) as ComponentNode;
-                const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal")) as ComponentNode;
-                if (vertical && horizontal) {
-                    return { componentSet, vertical, horizontal };
+            try {
+                const existing = await figma.getNodeByIdAsync(storedId);
+                if (existing && existing.type === "COMPONENT_SET") {
+                    const componentSet = existing as ComponentSetNode;
+                    const vertical = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Vertical")) as ComponentNode;
+                    const horizontal = componentSet.children.find(c => c.type === "COMPONENT" && c.name.includes("Horizontal")) as ComponentNode;
+                    if (vertical && horizontal) {
+                        return { componentSet, vertical, horizontal };
+                    }
                 }
+            } catch (e) {
+                // Component was deleted, clear stored ID
+                figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, "");
             }
         }
         
