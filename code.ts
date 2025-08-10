@@ -178,7 +178,7 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
     const horizontal = await createScaleComponent("Orientation=Horizontal", -90, 90);
 
 
-    // Create component set from the two components
+    // Create component set from the two components - ensure it's placed at page level
     const componentSet = figma.combineAsVariants([vertical, horizontal], figma.currentPage);
     componentSet.name = SCALE_COMPONENT_NAME;
     componentSet.layoutMode = "HORIZONTAL";
@@ -189,10 +189,13 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
     componentSet.itemSpacing = 10;
     componentSet.paddingLeft = componentSet.paddingRight = componentSet.paddingTop = componentSet.paddingBottom = 30;
     
+    // Ensure component set is placed directly under the page (not in any container)
+    figma.currentPage.appendChild(componentSet);
+    
     // Position component set near viewport center if provided
     if (viewportCenter) {
-        componentSet.x = viewportCenter.x - componentSet.width;
-        componentSet.y = viewportCenter.y - componentSet.height;
+        componentSet.x = viewportCenter.x - componentSet.width * 2;
+        componentSet.y = viewportCenter.y - componentSet.height * 2;
     }
     componentSet.strokes = [
         {
@@ -205,6 +208,33 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
     storeScaleComponentId(componentSet.id);
 
     return { componentSet, vertical, horizontal };
+}
+
+// Find the appropriate container for instance placement (group, frame, section, or page)
+function findTargetContainer(): BaseNode & ChildrenMixin {
+    if (figma.currentPage.selection.length === 0) {
+        return figma.currentPage;
+    }
+    
+    // Get the first selected element
+    const selected = figma.currentPage.selection[0];
+    
+    // Traverse up the parent hierarchy to find a suitable container
+    let current = selected.parent;
+    while (current) {
+        // Check if current parent is a group, frame, or section
+        if (current.type === "GROUP" || current.type === "FRAME" || current.type === "SECTION") {
+            return current as BaseNode & ChildrenMixin;
+        }
+        // If we reach the page, stop here
+        if (current.type === "PAGE") {
+            return current as BaseNode & ChildrenMixin;
+        }
+        current = current.parent;
+    }
+    
+    // Fallback to current page
+    return figma.currentPage;
 }
 
 // Insert one instance near selection center
@@ -221,10 +251,25 @@ async function insertScaleInstance() {
         textNode.name = VALUE_NODE_NAME;
     }
 
-    inst.x = vp.x;
-    inst.y = vp.y;
+    // Find appropriate container and place instance there
+    const targetContainer = findTargetContainer();
+    
+    // Position instance near viewport center or selected element
+    let targetX = vp.x;
+    let targetY = vp.y;
+    
+    // If there's a selection, position relative to it
+    if (figma.currentPage.selection.length > 0) {
+        const selected = figma.currentPage.selection[0];
+        targetX = selected.x + 20; // Place to the right of selected element
+        targetY = selected.y;
+    }
+    
+    inst.x = targetX;
+    inst.y = targetY;
 
-    figma.currentPage.appendChild(inst);
+    // Append to target container instead of page
+    targetContainer.appendChild(inst);
     figma.currentPage.selection = [inst];
 
     // Initial sync
