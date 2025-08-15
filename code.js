@@ -437,12 +437,10 @@ function onDocChange() {
 function onSelChange() {
     syncAll("selection").catch(console.error);
 }
-// Convert external instance to current document's component
-function convertInstance(inst) {
+// Convert external instance to current document's component (with pre-existing components)
+function convertInstanceWithComponents(inst, vertical, horizontal) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            // Get the current component set
-            const { vertical, horizontal } = yield getOrCreateScaleComponentSet();
             // Determine which variant to use based on the instance's rotation
             const isHorizontal = Math.abs(inst.rotation) > 45;
             const targetComponent = isHorizontal ? horizontal : vertical;
@@ -501,6 +499,20 @@ function convertInstance(inst) {
         }
     });
 }
+// Convert external instance to current document's component (creates component set if needed)
+function convertInstance(inst) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // Get the current component set
+            const { vertical, horizontal } = yield getOrCreateScaleComponentSet();
+            return yield convertInstanceWithComponents(inst, vertical, horizontal);
+        }
+        catch (e) {
+            console.error('Failed to convert instance:', e);
+            return null;
+        }
+    });
+}
 // Collect external instances from given nodes (including nested ones)
 function collectExternalInstances(nodes) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -535,8 +547,13 @@ function convertSelectedInstancesToCurrentDocument() {
             return { converted: 0, total: 0 };
         }
         const externalInstances = yield collectExternalInstances(selection);
-        // Convert instances in parallel
-        const conversionPromises = externalInstances.map(inst => convertInstance(inst));
+        if (externalInstances.length === 0) {
+            return { converted: 0, total: 0 };
+        }
+        // Ensure component set exists once before parallel conversion
+        const { vertical, horizontal } = yield getOrCreateScaleComponentSet();
+        // Convert instances in parallel with shared component set
+        const conversionPromises = externalInstances.map(inst => convertInstanceWithComponents(inst, vertical, horizontal));
         const conversionResults = yield Promise.all(conversionPromises);
         // Filter successful conversions
         const newSelection = conversionResults.filter((result) => result !== null);
