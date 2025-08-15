@@ -281,6 +281,27 @@ function isScaleInstance(inst) {
         return false;
     });
 }
+// Check if instance is an external scale instance (from another document)
+function isExternalScaleInstance(inst) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const mainComp = yield inst.getMainComponentAsync();
+            if (mainComp) {
+                // Check if it's a scale component by name but not from current document
+                const componentSet = mainComp.parent;
+                if ((componentSet === null || componentSet === void 0 ? void 0 : componentSet.type) === "COMPONENT_SET" && componentSet.name === SCALE_COMPONENT_NAME) {
+                    const storedId = getStoredScaleComponentId();
+                    // It's external if it doesn't match our stored component ID
+                    return componentSet.id !== storedId;
+                }
+            }
+        }
+        catch (e) {
+            console.warn('Could not check external instance:', inst.id, e);
+        }
+        return false;
+    });
+}
 // Check if instance needs text/stroke update
 function needsUpdate(inst) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -416,6 +437,117 @@ function onDocChange() {
 function onSelChange() {
     syncAll("selection").catch(console.error);
 }
+// Convert external instance to current document's component
+function convertInstance(inst) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // Get the current component set
+            const { vertical, horizontal } = yield getOrCreateScaleComponentSet();
+            // Determine which variant to use based on the instance's rotation
+            const isHorizontal = Math.abs(inst.rotation) > 45;
+            const targetComponent = isHorizontal ? horizontal : vertical;
+            // Store instance properties including layer order
+            const props = {
+                x: inst.x,
+                y: inst.y,
+                width: inst.width,
+                height: inst.height,
+                rotation: inst.rotation,
+                name: inst.name,
+                parent: inst.parent,
+                variantProperties: inst.variantProperties
+            };
+            // Find the index of the current instance in its parent's children
+            let insertIndex = -1;
+            if (props.parent && 'children' in props.parent) {
+                insertIndex = props.parent.children.indexOf(inst);
+            }
+            // Create new instance from current document's component
+            const newInstance = targetComponent.createInstance();
+            // Apply stored properties
+            newInstance.x = props.x;
+            newInstance.y = props.y;
+            newInstance.resizeWithoutConstraints(props.width, props.height);
+            newInstance.rotation = props.rotation;
+            newInstance.name = props.name;
+            // Set variant properties if they exist
+            if (props.variantProperties) {
+                try {
+                    newInstance.setProperties(props.variantProperties);
+                }
+                catch (e) {
+                    console.warn('Could not set variant properties:', e);
+                }
+            }
+            // Insert new instance at the same position in hierarchy and layer order
+            const parent = props.parent;
+            if (!parent || !('appendChild' in parent)) {
+                return null; // Cannot place instance without valid parent
+            }
+            parent.appendChild(newInstance);
+            // Move to the correct position in layer order if we found the index
+            if (insertIndex >= 0 && 'insertChild' in parent) {
+                parent.insertChild(insertIndex, newInstance);
+            }
+            // Remove the old instance
+            inst.remove();
+            // Sync the new instance
+            yield syncOne(newInstance);
+            return newInstance;
+        }
+        catch (e) {
+            console.error('Failed to convert instance:', e);
+            return null;
+        }
+    });
+}
+// Collect external instances from given nodes (including nested ones)
+function collectExternalInstances(nodes) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const allInstances = [];
+        // Collect all instances from selection and nested containers
+        for (const node of nodes) {
+            if (node.type === "INSTANCE") {
+                allInstances.push(node);
+            }
+            // Also check for instances within selected containers
+            if ('findAll' in node) {
+                const nestedInstances = node.findAll(n => n.type === "INSTANCE");
+                allInstances.push(...nestedInstances);
+            }
+        }
+        // Check which instances are external in parallel
+        const checkPromises = allInstances.map((inst) => __awaiter(this, void 0, void 0, function* () {
+            return ({
+                inst,
+                isExternal: yield isExternalScaleInstance(inst)
+            });
+        }));
+        const results = yield Promise.all(checkPromises);
+        return results.filter(result => result.isExternal).map(result => result.inst);
+    });
+}
+// Convert selected external instances to current document
+function convertSelectedInstancesToCurrentDocument() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const selection = figma.currentPage.selection;
+        if (selection.length === 0) {
+            return { converted: 0, total: 0 };
+        }
+        const externalInstances = yield collectExternalInstances(selection);
+        // Convert instances in parallel
+        const conversionPromises = externalInstances.map(inst => convertInstance(inst));
+        const conversionResults = yield Promise.all(conversionPromises);
+        // Filter successful conversions
+        const newSelection = conversionResults.filter((result) => result !== null);
+        const converted = newSelection.length;
+        // Update selection to include converted instances
+        if (newSelection.length > 0) {
+            figma.currentPage.selection = newSelection;
+        }
+        return { converted, total: externalInstances.length };
+    });
+}
 // Clean up function to remove event listeners and timers
 function cleanup() {
     // Clear any pending timer
@@ -460,5 +592,17 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
     if (msg.type === "INSERT") {
         yield insertScaleInstance();
         figma.notify("コンポーネントを作成しました！");
+    }
+    else if (msg.type === "CONVERT") {
+        const result = yield convertSelectedInstancesToCurrentDocument();
+        if (result.total === 0) {
+            figma.notify("選択範囲に変換対象のインスタンスが見つかりません");
+        }
+        else if (result.converted === 0) {
+            figma.notify("インスタンスの変換に失敗しました");
+        }
+        else {
+            figma.notify(`${result.converted}個のインスタンスを変換しました！`);
+        }
     }
 });

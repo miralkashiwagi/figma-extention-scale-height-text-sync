@@ -7,12 +7,16 @@
         <li>テキストの自動更新は<strong>プラグインを開いている間だけ</strong>動きます</li>
         <li>テキストを手動編集する場合、インスタンスを切り離してください<br><small>（自動更新が無効になります）</small></li>
         <li>プラグインを閉じてからインスタンスの高さ等を変更した場合、<strong>次にプラグインを起動したとき、テキストが自動更新</strong>されます</li>
+        <li>他のファイルからコピーしたインスタンスは自動更新されません。以下の「<strong>選択したインスタンスを現在のファイル用に変換</strong>」ボタンで変換してください</li>
     </ul>
 </div>
+<hr>
+<button id="convert">選択したインスタンスを<br>現在のファイル用に変換</button>
 
 <script>
     const post = (type, value) => parent.postMessage({ pluginMessage: { type, value } }, '*');
     document.getElementById('insert').onclick = () => post('INSERT');
+    document.getElementById('convert').onclick = () => post('CONVERT');
 </script>
 
 
@@ -20,7 +24,7 @@
     body {
         font-size: 0.75rem;
         margin: 0;
-        padding:1rem 1rem 0rem;
+        padding:1rem;
     }
     ul{
         margin: 0;

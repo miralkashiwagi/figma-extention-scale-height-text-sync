@@ -300,6 +300,25 @@ async function isScaleInstance(inst: InstanceNode): Promise<boolean> {
     return false;
 }
 
+// Check if instance is an external scale instance (from another document)
+async function isExternalScaleInstance(inst: InstanceNode): Promise<boolean> {
+    try {
+        const mainComp = await inst.getMainComponentAsync();
+        if (mainComp) {
+            // Check if it's a scale component by name but not from current document
+            const componentSet = mainComp.parent;
+            if (componentSet?.type === "COMPONENT_SET" && componentSet.name === SCALE_COMPONENT_NAME) {
+                const storedId = getStoredScaleComponentId();
+                // It's external if it doesn't match our stored component ID
+                return componentSet.id !== storedId;
+            }
+        }
+    } catch (e) {
+        console.warn('Could not check external instance:', inst.id, e);
+    }
+    return false;
+}
+
 // Check if instance needs text/stroke update
 async function needsUpdate(inst: InstanceNode): Promise<boolean> {
     if (!(await isScaleInstance(inst))) return false;
@@ -446,6 +465,131 @@ function onSelChange() {
     syncAll("selection").catch(console.error);
 }
 
+// Convert external instance to current document's component
+async function convertInstance(inst: InstanceNode): Promise<InstanceNode | null> {
+    try {
+        // Get the current component set
+        const { vertical, horizontal } = await getOrCreateScaleComponentSet();
+        
+        // Determine which variant to use based on the instance's rotation
+        const isHorizontal = Math.abs(inst.rotation) > 45;
+        const targetComponent = isHorizontal ? horizontal : vertical;
+        
+        // Store instance properties including layer order
+        const props = {
+            x: inst.x,
+            y: inst.y,
+            width: inst.width,
+            height: inst.height,
+            rotation: inst.rotation,
+            name: inst.name,
+            parent: inst.parent,
+            variantProperties: inst.variantProperties
+        };
+        
+        // Find the index of the current instance in its parent's children
+        let insertIndex = -1;
+        if (props.parent && 'children' in props.parent) {
+            insertIndex = props.parent.children.indexOf(inst);
+        }
+        
+        // Create new instance from current document's component
+        const newInstance = targetComponent.createInstance();
+        
+        // Apply stored properties
+        newInstance.x = props.x;
+        newInstance.y = props.y;
+        newInstance.resizeWithoutConstraints(props.width, props.height);
+        newInstance.rotation = props.rotation;
+        newInstance.name = props.name;
+        
+        // Set variant properties if they exist
+        if (props.variantProperties) {
+            try {
+                newInstance.setProperties(props.variantProperties);
+            } catch (e) {
+                console.warn('Could not set variant properties:', e);
+            }
+        }
+        
+        // Insert new instance at the same position in hierarchy and layer order
+        const parent = props.parent;
+        if (!parent || !('appendChild' in parent)) {
+            return null; // Cannot place instance without valid parent
+        }
+        
+        parent.appendChild(newInstance);
+        
+        // Move to the correct position in layer order if we found the index
+        if (insertIndex >= 0 && 'insertChild' in parent) {
+            parent.insertChild(insertIndex, newInstance);
+        }
+        
+        // Remove the old instance
+        inst.remove();
+        
+        // Sync the new instance
+        await syncOne(newInstance);
+        
+        return newInstance;
+    } catch (e) {
+        console.error('Failed to convert instance:', e);
+        return null;
+    }
+}
+
+// Collect external instances from given nodes (including nested ones)
+async function collectExternalInstances(nodes: readonly SceneNode[]): Promise<InstanceNode[]> {
+    const allInstances: InstanceNode[] = [];
+    
+    // Collect all instances from selection and nested containers
+    for (const node of nodes) {
+        if (node.type === "INSTANCE") {
+            allInstances.push(node as InstanceNode);
+        }
+        
+        // Also check for instances within selected containers
+        if ('findAll' in node) {
+            const nestedInstances = node.findAll(n => n.type === "INSTANCE") as InstanceNode[];
+            allInstances.push(...nestedInstances);
+        }
+    }
+    
+    // Check which instances are external in parallel
+    const checkPromises = allInstances.map(async inst => ({
+        inst,
+        isExternal: await isExternalScaleInstance(inst)
+    }));
+    
+    const results = await Promise.all(checkPromises);
+    return results.filter(result => result.isExternal).map(result => result.inst);
+}
+
+// Convert selected external instances to current document
+async function convertSelectedInstancesToCurrentDocument(): Promise<{converted: number, total: number}> {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+        return { converted: 0, total: 0 };
+    }
+    
+    const externalInstances = await collectExternalInstances(selection);
+    
+    // Convert instances in parallel
+    const conversionPromises = externalInstances.map(inst => convertInstance(inst));
+    const conversionResults = await Promise.all(conversionPromises);
+    
+    // Filter successful conversions
+    const newSelection = conversionResults.filter((result): result is InstanceNode => result !== null);
+    const converted = newSelection.length;
+    
+    // Update selection to include converted instances
+    if (newSelection.length > 0) {
+        figma.currentPage.selection = newSelection;
+    }
+    
+    return { converted, total: externalInstances.length };
+}
+
 // Clean up function to remove event listeners and timers
 function cleanup() {
     // Clear any pending timer
@@ -499,5 +643,14 @@ figma.ui.onmessage = async (msg) => {
     if (msg.type === "INSERT") {
         await insertScaleInstance();
         figma.notify("コンポーネントを作成しました！");
+    } else if (msg.type === "CONVERT") {
+        const result = await convertSelectedInstancesToCurrentDocument();
+        if (result.total === 0) {
+            figma.notify("選択範囲に変換対象のインスタンスが見つかりません");
+        } else if (result.converted === 0) {
+            figma.notify("インスタンスの変換に失敗しました");
+        } else {
+            figma.notify(`${result.converted}個のインスタンスを変換しました！`);
+        }
     }
 };
