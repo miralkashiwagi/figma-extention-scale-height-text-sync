@@ -129,17 +129,17 @@ async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: numb
     // Load all pages first for dynamic-page access
     await figma.loadAllPagesAsync();
     
-    // Check if any instances or the main component exist in current page
-    const currentPageInstances = figma.currentPage.findAll(n => n.type === "INSTANCE") as InstanceNode[];
-    const hasInstancesInCurrentPage = await Promise.all(
-        currentPageInstances.map(inst => isScaleInstance(inst))
+    // Check if any instances or the main component exist in document
+    const allInstances = figma.root.findAll(n => n.type === "INSTANCE") as InstanceNode[];
+    const hasInstancesInDocument = await Promise.all(
+        allInstances.map(inst => isScaleInstance(inst))
     ).then(results => results.some(result => result));
     
-    const currentPageComponents = figma.currentPage.findAll(n => n.type === "COMPONENT_SET" && n.name === SCALE_COMPONENT_NAME);
-    const hasMainComponentInCurrentPage = currentPageComponents.length > 0;
+    const allComponents = figma.root.findAll(n => n.type === "COMPONENT_SET" && n.name === SCALE_COMPONENT_NAME);
+    const hasMainComponentInDocument = allComponents.length > 0;
     
-    // If no instances or main components exist in current page, force regeneration
-    if (!hasInstancesInCurrentPage && !hasMainComponentInCurrentPage) {
+    // If no instances or main components exist in document, force regeneration
+    if (!hasInstancesInDocument && !hasMainComponentInDocument) {
         // Clear stored ID to force regeneration
         figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, "");
     } else {
