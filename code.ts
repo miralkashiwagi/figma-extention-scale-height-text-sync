@@ -10,7 +10,7 @@ async function setText(text: TextNode, s: string) {
     await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
     try {
         text.characters = s;
-        text.locked = true;
+        // text.locked = true;
     } catch (e) { 
         console.warn('Text set failed:', e); 
     }
@@ -45,7 +45,7 @@ async function createTextNode(height: number, rotation: number = 0): Promise<Tex
     text.lineHeight = { value: 100, unit: "PERCENT" };
     text.fontSize = 14;
     text.characters = px(height);
-    text.locked = true;
+    // text.locked = true;
     text.rotation = rotation;
     text.fills = [{
         type: "SOLID",
