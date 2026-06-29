@@ -5,9 +5,26 @@ function isText(n: SceneNode): n is TextNode { return n.type === "TEXT"; }
 const SCALE_COMPONENT_ID_KEY = "scaleComponentId";
 const VALUE_NODE_NAME = "value";
 const SCALE_COMPONENT_NAME = "FrameHeight->TextSync";
+const SELECTION_CHANGE_DEBOUNCE_MS = 150;
+const SELECTED_INSTANCE_POLL_MS = 200;
+const BATCH_SIZE = 50;
+let fontLoadPromise: Promise<void> | null = null;
+
+function waitForIdle(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function ensureFontLoaded(): Promise<void> {
+    if (!fontLoadPromise) {
+        fontLoadPromise = figma.loadFontAsync(CONSTANTS.FONT)
+            .then(() => undefined)
+            .catch(() => undefined);
+    }
+    await fontLoadPromise;
+}
 
 async function setText(text: TextNode, s: string) {
-    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
+    await ensureFontLoaded();
     try {
         text.characters = s;
         // text.locked = true;
@@ -40,7 +57,7 @@ const CONSTANTS = {
 async function createTextNode(height: number, rotation: number = 0): Promise<TextNode> {
     const text = figma.createText();
     text.name = VALUE_NODE_NAME;
-    await figma.loadFontAsync(CONSTANTS.FONT).catch(()=>{});
+    await ensureFontLoaded();
     text.fontName = CONSTANTS.FONT;
     text.lineHeight = { value: 100, unit: "PERCENT" };
     text.fontSize = 14;
@@ -125,46 +142,47 @@ function storeScaleComponentId(componentId: string) {
 }
 
 // Create the Scale component set (if not exists), return the component set and its variants
-async function getOrCreateScaleComponentSet(viewportCenter?: {x: number, y: number}): Promise<{componentSet: ComponentSetNode, vertical: ComponentNode, horizontal: ComponentNode}> {
-    // Load all pages first for dynamic-page access
-    await figma.loadAllPagesAsync();
-    
-    // Check if any instances or the main component exist in document
-    const allInstances = figma.root.findAll(n => n.type === "INSTANCE") as InstanceNode[];
-    const hasInstancesInDocument = await Promise.all(
-        allInstances.map(inst => isScaleInstance(inst))
-    ).then(results => results.some(result => result));
-    
-    const allComponents = figma.root.findAll(n => n.type === "COMPONENT_SET" && n.name === SCALE_COMPONENT_NAME);
-    const hasMainComponentInDocument = allComponents.length > 0;
-    
-    // If no instances or main components exist in document, force regeneration
-    if (!hasInstancesInDocument && !hasMainComponentInDocument) {
-        // Clear stored ID to force regeneration
-        figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, "");
-    } else {
-        // Try find by stored Component ID first
-        const storedId = getStoredScaleComponentId();
-        if (storedId) {
-            try {
-                const existing = await figma.getNodeByIdAsync(storedId);
-                if (existing && existing.type === "COMPONENT_SET") {
-                    const componentSet = existing as ComponentSetNode;
-                    const components = extractComponents(componentSet);
-                    if (components) {
-                        return { componentSet, ...components };
-                    }
+async function getOrCreateScaleComponentSet(
+    viewportCenter?: {x: number, y: number},
+    searchAllPages: boolean = true,
+    searchCurrentPage: boolean = true
+): Promise<{componentSet: ComponentSetNode, vertical: ComponentNode, horizontal: ComponentNode}> {
+    // Try stored Component ID first. This avoids loading and scanning every page
+    // for the common case where the plugin already created the component set.
+    const storedId = getStoredScaleComponentId();
+    if (storedId) {
+        try {
+            const existing = await figma.getNodeByIdAsync(storedId);
+            if (existing && existing.type === "COMPONENT_SET") {
+                const componentSet = existing as ComponentSetNode;
+                const components = extractComponents(componentSet);
+                if (components) {
+                    return { componentSet, ...components };
                 }
-            } catch (e) {
-                // Component was deleted, clear stored ID
-                figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, "");
+            }
+        } catch (e) {
+            // Component was deleted, clear stored ID
+            figma.root.setPluginData(SCALE_COMPONENT_ID_KEY, "");
+        }
+    }
+
+    if (searchCurrentPage) {
+        // Prefer the current page before escalating to all pages.
+        const currentPageExisting = figma.currentPage.findOne(n => n.type === "COMPONENT_SET" && n.name === SCALE_COMPONENT_NAME) as ComponentSetNode | null;
+        if (currentPageExisting) {
+            storeScaleComponentId(currentPageExisting.id);
+            const components = extractComponents(currentPageExisting);
+            if (components) {
+                return { componentSet: currentPageExisting, ...components };
             }
         }
-        
-        // Fallback: Try find by name in document
+    }
+
+    if (searchAllPages) {
+        // Fallback: load all pages only when callers explicitly allow it.
+        await figma.loadAllPagesAsync();
         const existing = figma.root.findOne(n => n.type === "COMPONENT_SET" && n.name === SCALE_COMPONENT_NAME) as ComponentSetNode | null;
         if (existing) {
-            // Store the ID for future reference
             storeScaleComponentId(existing.id);
             const components = extractComponents(existing);
             if (components) {
@@ -241,7 +259,7 @@ function findTargetContainer(): BaseNode & ChildrenMixin {
 async function insertScaleInstance() {
     // Get viewport center once for both component set and instance positioning
     const vp = figma.viewport.center;
-    const { vertical } = await getOrCreateScaleComponentSet(vp);
+    const { vertical } = await getOrCreateScaleComponentSet(vp, false, false);
     const inst = vertical.createInstance();
     inst.name = SCALE_COMPONENT_NAME;
 
@@ -281,6 +299,12 @@ function findValueText(inst: InstanceNode): TextNode | null {
     return inst.findOne(n => isText(n) && n.name === VALUE_NODE_NAME) as TextNode | null;
 }
 
+type ScaleInstanceInfo = {
+    inst: InstanceNode;
+    text: TextNode;
+    line: LineNode | null;
+};
+
 // Check if instance is a scale instance (by component ID)
 async function isScaleInstance(inst: InstanceNode): Promise<boolean> {
     const storedId = getStoredScaleComponentId();
@@ -319,37 +343,40 @@ async function isExternalScaleInstance(inst: InstanceNode): Promise<boolean> {
     return false;
 }
 
-// Check if instance needs text/stroke update
-async function needsUpdate(inst: InstanceNode): Promise<boolean> {
-    if (!(await isScaleInstance(inst))) return false;
-    
-    const t = findValueText(inst);
-    if (!t) return false;
-    
-    const expectedText = px(inst.height);
-    const expectedStroke = inst.height <= 10 ? 0.5 : 1;
+async function resolveScaleInstance(inst: InstanceNode): Promise<ScaleInstanceInfo | null> {
+    if (!(await isScaleInstance(inst))) return null;
+
+    const text = findValueText(inst);
+    if (!text) return null;
+
     const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow") as LineNode | null;
-    
-    return t.characters !== expectedText || (line ? line.strokeWeight !== expectedStroke : false);
+    return { inst, text, line };
+}
+
+// Check if instance needs text/stroke update
+function needsResolvedUpdate(info: ScaleInstanceInfo): boolean {
+    const expectedText = px(info.inst.height);
+    const expectedStroke = info.inst.height <= 10 ? 0.5 : 1;
+    return info.text.characters !== expectedText || (info.line ? info.line.strokeWeight !== expectedStroke : false);
 }
 
 // Sync a single instance's text to its own height
-async function syncOne(inst: InstanceNode) {
-    if (!(await isScaleInstance(inst))) return;
-    
-    const t = findValueText(inst);
-    if (!t) return;
-    
-    await setText(t, px(inst.height));
-    
+async function syncResolved(info: ScaleInstanceInfo) {
+    await setText(info.text, px(info.inst.height));
+
     // Update stroke weight based on height
-    const line = inst.findOne(n => n.type === "LINE" && n.name === "Arrow") as LineNode | null;
-    if (line) {
-        line.strokeWeight = inst.height <= 10 ? 0.5 : 1;
+    if (info.line) {
+        info.line.strokeWeight = info.inst.height <= 10 ? 0.5 : 1;
     }
 }
 
-// Collect all scale instances in the document (optionally within selection)
+async function syncOne(inst: InstanceNode) {
+    const info = await resolveScaleInstance(inst);
+    if (!info) return;
+    await syncResolved(info);
+}
+
+// Collect candidate instances in the document (optionally within selection)
 async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<InstanceNode[]> {
     if (scope === "all") {
         await figma.loadAllPagesAsync();
@@ -364,29 +391,22 @@ async function getScaleInstances(scope: "all" | "selection" = "all"): Promise<In
         // 全ドキュメント検索
         roots = [figma.root as BaseNode & ChildrenMixin];
     } else {
-        // 現在のページ検索（selection modeで選択が空の場合）
-        roots = [figma.currentPage as BaseNode & ChildrenMixin];
+        // In selection mode, an empty selection should stay cheap. The delayed
+        // full sync covers document-wide updates after startup.
+        roots = [];
     }
 
     const found: InstanceNode[] = [];
     for (const r of roots) {
         // 選択されたオブジェクト自体がインスタンスかチェック
         if (r.type === "INSTANCE") {
-            const inst = r as InstanceNode;
-            if (await isScaleInstance(inst)) {
-                found.push(inst);
-            }
+            found.push(r as InstanceNode);
         }
         
         // findAll を持つオブジェクトのみ子要素を検索
         if ("findAll" in r) {
             const instances = r.findAll(n => n.type === "INSTANCE") as InstanceNode[];
-            
-            for (const inst of instances) {
-                if (await isScaleInstance(inst)) {
-                    found.push(inst);
-                }
-            }
+            found.push(...instances);
         }
     }
     
@@ -403,31 +423,30 @@ async function syncAll(scope: "all" | "selection" = "all") {
         return;
     }
     
-    // Process in batches to avoid memory spikes with large numbers of instances
-    const BATCH_SIZE = 50;
     let totalUpdated = 0;
-    
+
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
         const batch = list.slice(i, i + BATCH_SIZE);
-        const instancesNeedingUpdate: InstanceNode[] = [];
+        const instancesNeedingUpdate: ScaleInstanceInfo[] = [];
         
         // Filter batch to only instances that need updates
         for (const inst of batch) {
-            if (await needsUpdate(inst)) {
-                instancesNeedingUpdate.push(inst);
+            const info = await resolveScaleInstance(inst);
+            if (info && needsResolvedUpdate(info)) {
+                instancesNeedingUpdate.push(info);
             }
         }
         
         // Sync instances in this batch
-        for (const inst of instancesNeedingUpdate) {
-            await syncOne(inst);
+        for (const info of instancesNeedingUpdate) {
+            await syncResolved(info);
         }
         
         totalUpdated += instancesNeedingUpdate.length;
         
         // Allow other operations between batches
         if (i + BATCH_SIZE < list.length) {
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await waitForIdle();
         }
     }
     
@@ -439,30 +458,61 @@ async function syncAll(scope: "all" | "selection" = "all") {
 
 // ---------- Auto sync while UI is open ----------
 let ticking = false;
-let debounceTimer: number | null = null;
-let documentChangeHandler: (() => void) | null = null;
+let selectionDebounceTimer: number | null = null;
+let selectedInstancePollTimer: number | null = null;
 let selectionChangeHandler: (() => void) | null = null;
 let isStartupSync = false;
 
-function onDocChange() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    if (ticking) return;
-    
-    debounceTimer = setTimeout(async () => {
-        if (ticking) return;
-        ticking = true;
-        debounceTimer = null;
-        
-        try {
-            await syncAll("selection");
-        } finally {
-            ticking = false;
-        }
-    }, 250);
+async function runSync(scope: "all" | "selection", startupSync: boolean = false): Promise<boolean> {
+    if (ticking) return false;
+
+    ticking = true;
+    const previousStartupSync = isStartupSync;
+    if (startupSync) {
+        isStartupSync = true;
+    }
+
+    try {
+        await syncAll(scope);
+        return true;
+    } finally {
+        isStartupSync = previousStartupSync;
+        ticking = false;
+    }
 }
 
 function onSelChange() {
-    syncAll("selection").catch(console.error);
+    if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
+
+    selectionDebounceTimer = setTimeout(async () => {
+        selectionDebounceTimer = null;
+        await runSync("selection");
+    }, SELECTION_CHANGE_DEBOUNCE_MS);
+}
+
+async function syncDirectSelection() {
+    const selectedInstances = figma.currentPage.selection.filter((node): node is InstanceNode => node.type === "INSTANCE");
+    if (selectedInstances.length === 0 || ticking) return;
+
+    ticking = true;
+    try {
+        for (const inst of selectedInstances) {
+            const info = await resolveScaleInstance(inst);
+            if (info && needsResolvedUpdate(info)) {
+                await syncResolved(info);
+            }
+        }
+    } finally {
+        ticking = false;
+    }
+}
+
+function startSelectedInstancePolling() {
+    if (selectedInstancePollTimer) return;
+
+    selectedInstancePollTimer = setInterval(() => {
+        syncDirectSelection().catch(console.error);
+    }, SELECTED_INSTANCE_POLL_MS);
 }
 
 // Convert external instance to current document's component (with pre-existing components)
@@ -569,14 +619,22 @@ async function collectExternalInstances(nodes: readonly SceneNode[]): Promise<In
         }
     }
     
-    // Check which instances are external in parallel
-    const checkPromises = allInstances.map(async inst => ({
-        inst,
-        isExternal: await isExternalScaleInstance(inst)
-    }));
-    
-    const results = await Promise.all(checkPromises);
-    return results.filter(result => result.isExternal).map(result => result.inst);
+    const externalInstances: InstanceNode[] = [];
+    for (let i = 0; i < allInstances.length; i += BATCH_SIZE) {
+        const batch = allInstances.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(batch.map(async inst => ({
+            inst,
+            isExternal: await isExternalScaleInstance(inst)
+        })));
+
+        externalInstances.push(...results.filter(result => result.isExternal).map(result => result.inst));
+
+        if (i + BATCH_SIZE < allInstances.length) {
+            await waitForIdle();
+        }
+    }
+
+    return externalInstances;
 }
 
 // Convert selected external instances to current document
@@ -615,16 +673,14 @@ async function convertSelectedInstancesToCurrentDocument(): Promise<{converted: 
 
 // Clean up function to remove event listeners and timers
 function cleanup() {
-    // Clear any pending timer
-    if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
+    if (selectionDebounceTimer) {
+        clearTimeout(selectionDebounceTimer);
+        selectionDebounceTimer = null;
     }
-    
-    // Remove event listeners if they exist
-    if (documentChangeHandler) {
-        figma.off("documentchange", documentChangeHandler);
-        documentChangeHandler = null;
+
+    if (selectedInstancePollTimer) {
+        clearInterval(selectedInstancePollTimer);
+        selectedInstancePollTimer = null;
     }
     
     if (selectionChangeHandler) {
@@ -643,20 +699,16 @@ figma.on("run", () => {
     
     // Always open UI when plugin is launched
     figma.showUI(__html__, { width: 240, height: 240 });
-    figma.loadAllPagesAsync().then(async () => {
-        // Set startup flag and sync all instances on startup
-        isStartupSync = true;
-        await syncAll("all");
-        isStartupSync = false;
-        
-        // Store references to handlers for cleanup
-        documentChangeHandler = onDocChange;
-        selectionChangeHandler = onSelChange;
-        
-        // Add event listeners
-        figma.on("documentchange", documentChangeHandler);
-        figma.on("selectionchange", selectionChangeHandler);
-    });
+
+    // Store reference to handler for cleanup
+    selectionChangeHandler = onSelChange;
+
+    // Keep automatic work limited to the current selection. Full-page loading
+    // is intentionally not scheduled automatically.
+    figma.on("selectionchange", selectionChangeHandler);
+    startSelectedInstancePolling();
+
+    runSync("selection").catch(console.error);
 });
 
 // Clean up when plugin closes
